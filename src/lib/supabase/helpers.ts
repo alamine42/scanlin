@@ -22,6 +22,90 @@ export async function getUserByClerkId(
   return { id: data.id };
 }
 
+/**
+ * Get or create a user and their default workspace.
+ * This handles the case where the Clerk webhook hasn't fired yet.
+ */
+export async function getOrCreateUser(
+  supabase: SupabaseClient,
+  clerkId: string,
+  email: string,
+  name?: string | null
+): Promise<{ userId: string; workspaceSlug: string } | null> {
+  // Try to get existing user
+  let user = await getUserByClerkId(supabase, clerkId);
+
+  if (!user) {
+    // Create user
+    const userResult = await supabase
+      .from('users')
+      .insert({
+        clerk_id: clerkId,
+        email,
+        name: name || email.split('@')[0],
+      } as never)
+      .select('id')
+      .single();
+
+    const userData = userResult.data as { id: string } | null;
+    if (userResult.error || !userData) {
+      console.error('Failed to create user:', userResult.error);
+      return null;
+    }
+    user = { id: userData.id };
+  }
+
+  // Check for existing workspace membership
+  const membershipResult = await supabase
+    .from('workspace_members')
+    .select('workspace_id, workspaces(slug)')
+    .eq('user_id', user.id)
+    .limit(1)
+    .single();
+
+  const membership = membershipResult.data as { workspace_id: string; workspaces: { slug: string } | null } | null;
+
+  if (membership?.workspaces) {
+    return { userId: user.id, workspaceSlug: membership.workspaces.slug };
+  }
+
+  // Create default workspace
+  const slug = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '-') + '-workspace';
+  const workspaceName = name ? `${name}'s Workspace` : 'My Workspace';
+
+  const workspaceResult = await supabase
+    .from('workspaces')
+    .insert({
+      name: workspaceName,
+      slug,
+      owner_id: user.id,
+    } as never)
+    .select('id, slug')
+    .single();
+
+  const workspace = workspaceResult.data as { id: string; slug: string } | null;
+  if (workspaceResult.error || !workspace) {
+    console.error('Failed to create workspace:', workspaceResult.error);
+    return null;
+  }
+
+  // Add user as workspace owner
+  const memberResult = await supabase
+    .from('workspace_members')
+    .insert({
+      workspace_id: workspace.id,
+      user_id: user.id,
+      role: 'owner',
+    } as never);
+
+  if (memberResult.error) {
+    console.error('Failed to add workspace member:', memberResult.error);
+    return null;
+  }
+
+  return { userId: user.id, workspaceSlug: workspace.slug };
+}
+
 export async function getWorkspaceBySlug(
   supabase: SupabaseClient,
   slug: string

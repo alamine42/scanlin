@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserByClerkId } from '@/lib/supabase/helpers';
+import { getOrCreateUser } from '@/lib/supabase/helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,38 +12,32 @@ export default async function RootPage() {
     redirect('/sign-in');
   }
 
+  // Get Clerk user details
+  const clerkUser = await currentUser();
+  if (!clerkUser) {
+    redirect('/sign-in');
+  }
+
+  const email = clerkUser.emailAddresses[0]?.emailAddress;
+  if (!email) {
+    redirect('/sign-in');
+  }
+
   const supabase = await createClient();
 
-  // Get user from Supabase
-  const user = await getUserByClerkId(supabase, userId);
+  // Get or create user and their workspace
+  const result = await getOrCreateUser(
+    supabase,
+    userId,
+    email,
+    clerkUser.firstName || clerkUser.username
+  );
 
-  if (!user) {
-    // User not synced yet - this shouldn't happen often
-    // but could occur if webhook is delayed
-    redirect('/sign-in');
+  if (!result) {
+    // Something went wrong - show error page instead of looping
+    throw new Error('Failed to initialize user account');
   }
 
-  // Get user's first workspace
-  const membershipResult = await supabase
-    .from('workspace_members')
-    .select(`
-      workspace_id,
-      workspaces (
-        slug
-      )
-    `)
-    .eq('user_id', user.id)
-    .limit(1)
-    .single();
-
-  const membership = membershipResult.data as { workspace_id: string; workspaces: { slug: string } | null } | null;
-
-  if (membershipResult.error || !membership?.workspaces) {
-    // User has no workspace - this shouldn't happen as we create one on signup
-    // but handle gracefully by redirecting to a setup page
-    redirect('/sign-in');
-  }
-
-  // Redirect to user's default workspace
-  redirect(`/${membership.workspaces.slug}`);
+  // Redirect to user's workspace
+  redirect(`/${result.workspaceSlug}`);
 }
