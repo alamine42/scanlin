@@ -1,42 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllProposals } from '@/lib/db';
-import { createLinearIssue } from '@/lib/linear';
-import { Severity } from '@/types/proposal';
-
-const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low'];
+import { auth } from '@clerk/nextjs/server';
+import { createClient } from '@/lib/supabase/server';
+import { validateWorkspaceAccess } from '@/lib/supabase/helpers';
+import { getLinearClient, getDefaultTeamId, createLinearIssue } from '@/lib/integrations/linear';
+import { getPendingProposalsBySeverity, updateProposalStatus } from '@/lib/services/proposals';
+import type { Severity } from '@/types/database';
 
 export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const workspaceSlug = searchParams.get('workspace');
+
+    if (!workspaceSlug) {
+      return NextResponse.json({ error: 'Workspace is required' }, { status: 400 });
+    }
+
     const body = await request.json();
     const { minSeverity } = body as { minSeverity: Severity | 'all' };
 
-    if (!process.env.LINEAR_API_KEY) {
+    const supabase = await createClient();
+
+    // Validate workspace access
+    const access = await validateWorkspaceAccess(supabase, userId, workspaceSlug);
+    if (!access) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    const { workspaceId } = access;
+
+    // Get Linear client
+    const linearClient = await getLinearClient(workspaceId);
+    if (!linearClient) {
       return NextResponse.json(
-        { error: 'LINEAR_API_KEY environment variable is not set' },
-        { status: 500 }
+        { error: 'Linear not connected. Please connect your Linear account in settings.' },
+        { status: 400 }
       );
     }
 
-    if (!process.env.LINEAR_TEAM_ID) {
+    // Get default team
+    const teamId = await getDefaultTeamId(linearClient, workspaceId);
+    if (!teamId) {
       return NextResponse.json(
-        { error: 'LINEAR_TEAM_ID environment variable is not set' },
-        { status: 500 }
+        { error: 'No Linear team found. Please configure your Linear settings.' },
+        { status: 400 }
       );
     }
 
-    // Get all pending proposals
-    const proposals = getAllProposals({ status: 'pending' });
+    // Get eligible proposals
+    const proposals = await getPendingProposalsBySeverity(workspaceId, minSeverity);
 
-    // Filter by severity threshold
-    const severityThreshold = minSeverity === 'all' ? SEVERITY_ORDER.length : SEVERITY_ORDER.indexOf(minSeverity) + 1;
-    const eligibleSeverities = SEVERITY_ORDER.slice(0, severityThreshold);
-
-    const toApprove = proposals.filter(p => eligibleSeverities.includes(p.severity));
-
-    if (toApprove.length === 0) {
+    if (proposals.length === 0) {
       return NextResponse.json({
         success: true,
         approved: 0,
+        failed: 0,
         message: 'No proposals match the criteria',
       });
     }
@@ -44,9 +66,10 @@ export async function POST(request: NextRequest) {
     // Approve each proposal
     const results: { id: string; title: string; linearUrl?: string; error?: string }[] = [];
 
-    for (const proposal of toApprove) {
+    for (const proposal of proposals) {
       try {
-        const { issueUrl } = await createLinearIssue(proposal);
+        const { issueId, issueUrl } = await createLinearIssue(linearClient, teamId, proposal);
+        await updateProposalStatus(workspaceId, proposal.id, 'approved', issueId, issueUrl);
         results.push({ id: proposal.id, title: proposal.title, linearUrl: issueUrl });
       } catch (error) {
         results.push({

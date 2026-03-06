@@ -12,6 +12,7 @@ interface BulkActionsProps {
     low: number;
     total: number;
   };
+  workspaceSlug?: string;
 }
 
 type ApprovalOption = {
@@ -21,7 +22,7 @@ type ApprovalOption = {
   count: number;
 };
 
-export function BulkActions({ counts }: BulkActionsProps) {
+export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -67,7 +68,8 @@ export function BulkActions({ counts }: BulkActionsProps) {
     setResult(null);
 
     try {
-      const response = await fetch('/api/approve/bulk', {
+      const url = workspaceSlug ? `/api/approve/bulk?workspace=${workspaceSlug}` : '/api/approve/bulk';
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ minSeverity }),

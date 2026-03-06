@@ -1,110 +1,49 @@
-import { getAllProposals, getProposalStats, getFilesScanned } from '@/lib/db';
-import { ProposalList } from '@/components/ProposalList';
-import { ScanButton } from '@/components/ScanButton';
+import { redirect } from 'next/navigation';
+import { auth } from '@clerk/nextjs/server';
+import { createClient } from '@/lib/supabase/server';
+import { getUserByClerkId } from '@/lib/supabase/helpers';
 
 export const dynamic = 'force-dynamic';
 
-export default function DashboardPage() {
-  const proposals = getAllProposals();
-  const stats = getProposalStats();
-  const filesScanned = getFilesScanned();
+export default async function RootPage() {
+  const { userId } = await auth();
 
-  return (
-    <div className="space-y-8">
-      {/* Header section */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Proposed Issues</h1>
-          <p className="mt-1 text-sm text-gray-400">
-            AI-detected security vulnerabilities and testing gaps. Review and approve to create Linear issues.
-          </p>
-        </div>
-        <ScanButton hasProposals={proposals.length > 0} />
-      </div>
+  if (!userId) {
+    redirect('/sign-in');
+  }
 
-      {/* Stats */}
-      {stats.total > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatCard
-            label="Files Scanned"
-            value={filesScanned}
-            color="text-blue-400"
-            icon="📁"
-          />
-          <StatCard
-            label="Total Issues"
-            value={stats.total}
-            color="text-white"
-          />
-          <StatCard
-            label="Security"
-            value={stats.byCategory.security}
-            color="text-red-400"
-            icon="🔒"
-          />
-          <StatCard
-            label="Testing"
-            value={stats.byCategory.testing}
-            color="text-purple-400"
-            icon="🧪"
-          />
-          <StatCard
-            label="Critical"
-            value={stats.bySeverity.critical}
-            color="text-red-500"
-          />
-        </div>
-      )}
+  const supabase = await createClient();
 
-      {/* Empty state */}
-      {proposals.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-900 mb-4">
-            <svg
-              className="w-8 h-8 text-gray-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-              />
-            </svg>
-          </div>
-          <h2 className="text-xl font-medium text-white mb-2">No proposed issues yet</h2>
-          <p className="text-gray-500 max-w-md mx-auto">
-            Run a scan to analyze your repository for security vulnerabilities and testing gaps.
-            AI will identify potential issues that need your review.
-          </p>
-        </div>
-      ) : (
-        <ProposalList proposals={proposals} />
-      )}
-    </div>
-  );
-}
+  // Get user from Supabase
+  const user = await getUserByClerkId(supabase, userId);
 
-function StatCard({
-  label,
-  value,
-  color,
-  icon,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  icon?: string;
-}) {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-      <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-        {icon && <span>{icon}</span>}
-        <span>{label}</span>
-      </div>
-      <div className={`text-2xl font-semibold ${color}`}>{value}</div>
-    </div>
-  );
+  if (!user) {
+    // User not synced yet - this shouldn't happen often
+    // but could occur if webhook is delayed
+    redirect('/sign-in');
+  }
+
+  // Get user's first workspace
+  const membershipResult = await supabase
+    .from('workspace_members')
+    .select(`
+      workspace_id,
+      workspaces (
+        slug
+      )
+    `)
+    .eq('user_id', user.id)
+    .limit(1)
+    .single();
+
+  const membership = membershipResult.data as { workspace_id: string; workspaces: { slug: string } | null } | null;
+
+  if (membershipResult.error || !membership?.workspaces) {
+    // User has no workspace - this shouldn't happen as we create one on signup
+    // but handle gracefully by redirecting to a setup page
+    redirect('/sign-in');
+  }
+
+  // Redirect to user's default workspace
+  redirect(`/${membership.workspaces.slug}`);
 }

@@ -1,15 +1,22 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { Octokit } from '@octokit/rest';
+import { LinearClient } from '@linear/sdk';
 import {
   getAnalyzableFiles,
   fetchFilesForAnalysis,
   categorizeFiles,
   findTestFileForSource,
   FileTreeItem,
-} from './github';
+} from './integrations/github';
+import {
+  findExistingIssue,
+  getDefaultTeamId,
+} from './integrations/linear';
 import { buildSecurityPrompt } from './prompts/security';
 import { buildTestingPrompt } from './prompts/testing';
-import { createProposal, findSimilarProposal, setFilesScanned } from './db';
-import { findExistingIssue } from './linear';
+import { createProposal, findSimilarProposal } from './services/proposals';
+import { updateScanStatus } from './services/scans';
+import { updateLastScanned } from './services/repositories';
 import { AIAnalysisResult, Category, ProposedIssue } from '@/types/proposal';
 
 const anthropic = new Anthropic({
@@ -28,6 +35,15 @@ export interface AnalysisEvent {
 }
 
 type EventCallback = (event: AnalysisEvent) => void;
+
+interface AnalysisContext {
+  workspaceId: string;
+  repositoryId: string;
+  scanId: string;
+  octokit: Octokit;
+  linearClient: LinearClient | null;
+  linearTeamId: string | null;
+}
 
 async function analyzeWithAI(
   prompt: string,
@@ -82,15 +98,21 @@ async function analyzeWithAI(
 
 export async function analyzeRepositoryStreaming(
   repoString: string,
+  context: AnalysisContext,
   onEvent: EventCallback
 ): Promise<void> {
+  const { workspaceId, repositoryId, scanId, octokit, linearClient, linearTeamId } = context;
   let totalProposals = 0;
+  let filesScanned = 0;
 
   try {
+    // Update scan status to running
+    await updateScanStatus(scanId, 'running');
+
     // Phase 1: Fetch file tree
     onEvent({ type: 'progress', phase: 'fetching', current: 0, total: 0 });
 
-    const analyzableFiles = await getAnalyzableFiles(repoString);
+    const analyzableFiles = await getAnalyzableFiles(octokit, repoString);
     const { sourceFiles, testFiles, configFiles } = categorizeFiles(analyzableFiles);
 
     // Prioritize files: security-sensitive first, then by size
@@ -112,14 +134,18 @@ export async function analyzeRepositoryStreaming(
 
     // Fetch file contents
     const sourceContents = await fetchFilesForAnalysis(
+      octokit,
       repoString,
       filesToAnalyze.map(f => f.path)
     );
 
     const testContents = await fetchFilesForAnalysis(
+      octokit,
       repoString,
       testFilesToFetch.map(f => f.path)
     );
+
+    filesScanned = sourceContents.length;
 
     // Phase 2: Analyze files
     const totalAnalyses = sourceContents.length * 2;
@@ -139,21 +165,33 @@ export async function analyzeRepositoryStreaming(
       const securityResults = await analyzeWithAI(securityPrompt, 'security');
 
       for (const result of securityResults) {
-        const existing = findSimilarProposal(result.filePath, result.title);
+        // Check for existing proposal in database
+        const existing = await findSimilarProposal(workspaceId, repositoryId, result.filePath, result.title);
         if (existing) continue;
 
         // Check if this issue already exists in Linear
-        const existingLinearIssue = await findExistingIssue(result.title, result.filePath);
+        let existingLinearIssue = null;
+        if (linearClient && linearTeamId) {
+          existingLinearIssue = await findExistingIssue(
+            linearClient,
+            linearTeamId,
+            result.title,
+            result.filePath
+          );
+        }
 
-        const proposal = createProposal({
+        const proposal = await createProposal(workspaceId, repositoryId, scanId, {
           ...result,
           category: 'security',
           isPreExisting: !!existingLinearIssue,
           existingLinearIssueId: existingLinearIssue?.id,
           existingLinearIssueUrl: existingLinearIssue?.url,
         });
-        totalProposals++;
-        onEvent({ type: 'proposal', proposal });
+
+        if (proposal) {
+          totalProposals++;
+          onEvent({ type: 'proposal', proposal });
+        }
       }
 
       completed++;
@@ -184,21 +222,33 @@ export async function analyzeRepositoryStreaming(
       const testingResults = await analyzeWithAI(testingPrompt, 'testing');
 
       for (const result of testingResults) {
-        const existing = findSimilarProposal(result.filePath, result.title);
+        // Check for existing proposal in database
+        const existing = await findSimilarProposal(workspaceId, repositoryId, result.filePath, result.title);
         if (existing) continue;
 
         // Check if this issue already exists in Linear
-        const existingLinearIssue = await findExistingIssue(result.title, result.filePath);
+        let existingLinearIssue = null;
+        if (linearClient && linearTeamId) {
+          existingLinearIssue = await findExistingIssue(
+            linearClient,
+            linearTeamId,
+            result.title,
+            result.filePath
+          );
+        }
 
-        const proposal = createProposal({
+        const proposal = await createProposal(workspaceId, repositoryId, scanId, {
           ...result,
           category: 'testing',
           isPreExisting: !!existingLinearIssue,
           existingLinearIssueId: existingLinearIssue?.id,
           existingLinearIssueUrl: existingLinearIssue?.url,
         });
-        totalProposals++;
-        onEvent({ type: 'proposal', proposal });
+
+        if (proposal) {
+          totalProposals++;
+          onEvent({ type: 'proposal', proposal });
+        }
       }
 
       completed++;
@@ -207,29 +257,26 @@ export async function analyzeRepositoryStreaming(
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Track files scanned
-    setFilesScanned(sourceContents.length);
+    // Update scan status to completed
+    await updateScanStatus(scanId, 'completed', filesScanned, totalProposals);
+
+    // Update repository last scanned
+    await updateLastScanned(workspaceId, repositoryId);
 
     onEvent({ type: 'complete', totalProposals });
   } catch (error) {
+    // Update scan status to failed
+    await updateScanStatus(
+      scanId,
+      'failed',
+      filesScanned,
+      totalProposals,
+      error instanceof Error ? error.message : 'Analysis failed'
+    );
+
     onEvent({
       type: 'error',
       error: error instanceof Error ? error.message : 'Analysis failed',
     });
   }
-}
-
-// Keep the old function for backwards compatibility
-export async function analyzeRepository(
-  repoString: string
-): Promise<ProposedIssue[]> {
-  const proposals: ProposedIssue[] = [];
-
-  await analyzeRepositoryStreaming(repoString, (event) => {
-    if (event.type === 'proposal' && event.proposal) {
-      proposals.push(event.proposal);
-    }
-  });
-
-  return proposals;
 }

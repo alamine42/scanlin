@@ -6,9 +6,10 @@ import { ProposedIssue } from '@/types/proposal';
 
 interface ApprovalActionsProps {
   proposal: ProposedIssue;
+  workspaceSlug?: string;
 }
 
-export function ApprovalActions({ proposal }: ApprovalActionsProps) {
+export function ApprovalActions({ proposal, workspaceSlug }: ApprovalActionsProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +20,8 @@ export function ApprovalActions({ proposal }: ApprovalActionsProps) {
     setError(null);
 
     try {
-      const response = await fetch('/api/approve', {
+      const url = workspaceSlug ? `/api/approve?workspace=${workspaceSlug}` : '/api/approve';
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ proposalId: proposal.id }),
@@ -44,7 +46,8 @@ export function ApprovalActions({ proposal }: ApprovalActionsProps) {
     setError(null);
 
     try {
-      const response = await fetch('/api/proposals', {
+      const url = workspaceSlug ? `/api/proposals?workspace=${workspaceSlug}` : '/api/proposals';
+      const response = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: proposal.id, status: 'rejected' }),
@@ -68,7 +71,8 @@ export function ApprovalActions({ proposal }: ApprovalActionsProps) {
     setShowSnoozeOptions(false);
 
     try {
-      const response = await fetch('/api/proposals', {
+      const url = workspaceSlug ? `/api/proposals?workspace=${workspaceSlug}` : '/api/proposals';
+      const response = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: proposal.id, snooze: days }),

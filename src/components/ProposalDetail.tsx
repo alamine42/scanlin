@@ -9,6 +9,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface ProposalDetailProps {
   proposal: ProposedIssue;
+  workspaceSlug?: string;
 }
 
 function getLanguageFromPath(filePath: string): string {
@@ -32,7 +33,7 @@ function getLanguageFromPath(filePath: string): string {
   return languageMap[ext] || 'text';
 }
 
-export function ProposalDetail({ proposal }: ProposalDetailProps) {
+export function ProposalDetail({ proposal, workspaceSlug }: ProposalDetailProps) {
   const language = getLanguageFromPath(proposal.filePath);
 
   return (
@@ -85,7 +86,7 @@ export function ProposalDetail({ proposal }: ProposalDetailProps) {
             )}
           </div>
         ) : (
-          <ApprovalActions proposal={proposal} />
+          <ApprovalActions proposal={proposal} workspaceSlug={workspaceSlug} />
         )}
       </div>
 

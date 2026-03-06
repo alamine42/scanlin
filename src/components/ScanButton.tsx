@@ -13,9 +13,12 @@ interface ScanProgress {
 
 interface ScanButtonProps {
   hasProposals?: boolean;
+  disabled?: boolean;
+  workspaceSlug?: string;
+  repositoryId?: string;
 }
 
-export function ScanButton({ hasProposals = false }: ScanButtonProps) {
+export function ScanButton({ hasProposals = false, disabled = false, workspaceSlug, repositoryId }: ScanButtonProps) {
   const router = useRouter();
   const [isScanning, setIsScanning] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -28,8 +31,11 @@ export function ScanButton({ hasProposals = false }: ScanButtonProps) {
     setProgress({ phase: 'fetching', current: 0, total: 0, foundCount: 0 });
 
     try {
-      const response = await fetch('/api/scan', {
+      const url = workspaceSlug ? `/api/scan?workspace=${workspaceSlug}` : '/api/scan';
+      const response = await fetch(url, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repositoryId }),
       });
 
       if (!response.ok) {
@@ -112,7 +118,8 @@ export function ScanButton({ hasProposals = false }: ScanButtonProps) {
     setError(null);
 
     try {
-      const response = await fetch('/api/proposals/clear', {
+      const url = workspaceSlug ? `/api/proposals/clear?workspace=${workspaceSlug}` : '/api/proposals/clear';
+      const response = await fetch(url, {
         method: 'POST',
       });
 
@@ -132,8 +139,8 @@ export function ScanButton({ hasProposals = false }: ScanButtonProps) {
     <div className="flex items-center gap-3">
       <button
         onClick={handleScan}
-        disabled={isScanning || isClearing}
-        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white text-sm font-medium rounded-lg transition-colors"
+        disabled={isScanning || isClearing || disabled}
+        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
       >
         {isScanning ? (
           <>

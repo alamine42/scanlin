@@ -1,51 +1,7 @@
 import { LinearClient } from '@linear/sdk';
-import { ProposedIssue } from '@/types/proposal';
-import { updateProposal } from './db';
-
-let linearClient: LinearClient | null = null;
-let cachedTeamId: string | null = null;
-
-function getLinearClient(): LinearClient {
-  if (!linearClient) {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      throw new Error('LINEAR_API_KEY is not set');
-    }
-    linearClient = new LinearClient({ apiKey });
-  }
-  return linearClient;
-}
-
-// Get the actual team ID (UUID) from the team key (e.g., "UND")
-async function getTeamId(): Promise<string> {
-  if (cachedTeamId) {
-    return cachedTeamId;
-  }
-
-  const teamKey = process.env.LINEAR_TEAM_ID;
-  if (!teamKey) {
-    throw new Error('LINEAR_TEAM_ID is not set');
-  }
-
-  const client = getLinearClient();
-  const teams = await client.teams();
-
-  // Find the team by key (the short identifier like "UND")
-  const team = teams.nodes.find(t => t.key === teamKey);
-
-  if (!team) {
-    // If not found by key, maybe they provided the actual ID
-    const teamById = teams.nodes.find(t => t.id === teamKey);
-    if (teamById) {
-      cachedTeamId = teamById.id;
-      return cachedTeamId;
-    }
-    throw new Error(`Team with key "${teamKey}" not found`);
-  }
-
-  cachedTeamId = team.id;
-  return cachedTeamId;
-}
+import { createClient } from '@/lib/supabase/server';
+import { decrypt } from '@/lib/encryption';
+import type { ProposedIssue } from '@/types/proposal';
 
 const SEVERITY_TO_PRIORITY: Record<string, number> = {
   critical: 1, // Urgent
@@ -59,18 +15,90 @@ const CATEGORY_LABELS: Record<string, string> = {
   testing: '🧪 Testing',
 };
 
-export async function createLinearIssue(proposal: ProposedIssue): Promise<{
-  issueId: string;
-  issueUrl: string;
-}> {
-  const client = getLinearClient();
-  const teamId = await getTeamId();
+/**
+ * Get a Linear client for a workspace
+ * This decrypts the stored OAuth token and creates a LinearClient instance
+ */
+export async function getLinearClient(workspaceId: string): Promise<LinearClient | null> {
+  const supabase = await createClient();
 
-  // Build issue description with all relevant info
+  const result = await supabase
+    .from('linear_connections')
+    .select('access_token_encrypted, expires_at')
+    .eq('workspace_id', workspaceId)
+    .limit(1)
+    .single();
+
+  const connection = result.data as { access_token_encrypted: string; expires_at: string | null } | null;
+
+  if (result.error || !connection) {
+    console.error('No Linear connection found for workspace:', workspaceId);
+    return null;
+  }
+
+  // Check if token is expired
+  if (connection.expires_at && new Date(connection.expires_at) < new Date()) {
+    console.error('Linear token has expired for workspace:', workspaceId);
+    // TODO: Implement token refresh
+    return null;
+  }
+
+  try {
+    const accessToken = decrypt(connection.access_token_encrypted);
+    return new LinearClient({ accessToken });
+  } catch (error) {
+    console.error('Failed to decrypt Linear token:', error);
+    return null;
+  }
+}
+
+/**
+ * Get the default team ID for a workspace
+ * Falls back to the first available team if no default is set
+ */
+export async function getDefaultTeamId(
+  linearClient: LinearClient,
+  workspaceId: string
+): Promise<string | null> {
+  const supabase = await createClient();
+
+  // Check for saved default team
+  const result = await supabase
+    .from('linear_settings')
+    .select('default_team_id')
+    .eq('workspace_id', workspaceId)
+    .single();
+
+  const settings = result.data as { default_team_id: string | null } | null;
+
+  if (settings?.default_team_id) {
+    return settings.default_team_id;
+  }
+
+  // Fall back to first team
+  try {
+    const teams = await linearClient.teams();
+    if (teams.nodes.length > 0) {
+      return teams.nodes[0].id;
+    }
+  } catch (error) {
+    console.error('Failed to fetch Linear teams:', error);
+  }
+
+  return null;
+}
+
+/**
+ * Create a Linear issue from a proposal
+ */
+export async function createLinearIssue(
+  linearClient: LinearClient,
+  teamId: string,
+  proposal: ProposedIssue
+): Promise<{ issueId: string; issueUrl: string }> {
   const description = buildIssueDescription(proposal);
 
-  // Create the issue
-  const issuePayload = await client.createIssue({
+  const issuePayload = await linearClient.createIssue({
     teamId,
     title: `[${CATEGORY_LABELS[proposal.category]}] ${proposal.title}`,
     description,
@@ -83,18 +111,10 @@ export async function createLinearIssue(proposal: ProposedIssue): Promise<{
     throw new Error('Failed to create Linear issue');
   }
 
-  const issueId = issue.id;
-  const issueUrl = `https://linear.app/issue/${issue.identifier}`;
-
-  // Update proposal with Linear info
-  updateProposal({
-    id: proposal.id,
-    status: 'approved',
-    linearIssueId: issueId,
-    linearIssueUrl: issueUrl,
-  });
-
-  return { issueId, issueUrl };
+  return {
+    issueId: issue.id,
+    issueUrl: `https://linear.app/issue/${issue.identifier}`,
+  };
 }
 
 function buildIssueDescription(proposal: ProposedIssue): string {
@@ -146,20 +166,31 @@ function buildIssueDescription(proposal: ProposedIssue): string {
   return parts.join('\n');
 }
 
-export async function getTeams(): Promise<{ id: string; name: string }[]> {
-  const client = getLinearClient();
-  const teams = await client.teams();
-
-  return teams.nodes.map(team => ({
-    id: team.id,
-    name: team.name,
-  }));
+/**
+ * Get available teams from Linear
+ */
+export async function getTeams(
+  linearClient: LinearClient
+): Promise<{ id: string; key: string; name: string }[]> {
+  try {
+    const teams = await linearClient.teams();
+    return teams.nodes.map(team => ({
+      id: team.id,
+      key: team.key,
+      name: team.name,
+    }));
+  } catch (error) {
+    console.error('Failed to fetch Linear teams:', error);
+    return [];
+  }
 }
 
-export async function validateConnection(): Promise<boolean> {
+/**
+ * Validate Linear connection
+ */
+export async function validateConnection(linearClient: LinearClient): Promise<boolean> {
   try {
-    const client = getLinearClient();
-    const viewer = await client.viewer;
+    const viewer = await linearClient.viewer;
     return !!viewer.id;
   } catch {
     return false;
@@ -173,45 +204,39 @@ export interface ExistingIssue {
   url: string;
 }
 
-// Search for existing issues that might match a proposed issue
+/**
+ * Search for existing issues that might match a proposed issue
+ */
 export async function findExistingIssue(
+  linearClient: LinearClient,
+  teamId: string,
   title: string,
   filePath: string
 ): Promise<ExistingIssue | null> {
   try {
-    const client = getLinearClient();
-    const teamId = await getTeamId();
-
     // Search for issues with similar title or file path
-    // Linear's search is fuzzy, so we search for key terms
     const searchTerms = [
-      // Try searching for the file path
       filePath.split('/').pop() || '',
-      // Try key words from title
       ...title.split(' ').filter(w => w.length > 4).slice(0, 3),
     ].filter(Boolean);
 
     for (const term of searchTerms) {
       if (!term || term.length < 3) continue;
 
-      const results = await client.issueSearch({ query: term });
+      const results = await linearClient.issueSearch({ query: term });
 
       for (const issue of results.nodes) {
-        // Check if this issue is from the same team
         const issueTeam = await issue.team;
         if (issueTeam?.id !== teamId) continue;
 
-        // Check for similarity - title contains our title or vice versa
         const issueTitle = issue.title.toLowerCase();
         const proposedTitle = title.toLowerCase();
 
-        // Check if titles are similar (one contains the other, or high word overlap)
         const titleMatch =
           issueTitle.includes(proposedTitle) ||
           proposedTitle.includes(issueTitle) ||
           calculateSimilarity(issueTitle, proposedTitle) > 0.6;
 
-        // Check if file path is mentioned
         const description = issue.description || '';
         const fileMatch = description.toLowerCase().includes(filePath.toLowerCase());
 
@@ -233,7 +258,6 @@ export async function findExistingIssue(
   }
 }
 
-// Simple word-based similarity calculation
 function calculateSimilarity(str1: string, str2: string): number {
   const words1 = new Set(str1.split(/\s+/).filter(w => w.length > 2));
   const words2 = new Set(str2.split(/\s+/).filter(w => w.length > 2));
