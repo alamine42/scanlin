@@ -1,9 +1,8 @@
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- gen_random_uuid() is built into PostgreSQL 13+ (Supabase default)
 
 -- Users table (synced from Clerk via webhooks)
 CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   clerk_id TEXT UNIQUE NOT NULL,
   email TEXT NOT NULL,
   name TEXT,
@@ -16,7 +15,7 @@ CREATE INDEX idx_users_clerk_id ON users(clerk_id);
 
 -- Workspaces table
 CREATE TABLE workspaces (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   slug TEXT UNIQUE NOT NULL,
   owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -29,7 +28,7 @@ CREATE INDEX idx_workspaces_owner ON workspaces(owner_id);
 
 -- Workspace members junction table
 CREATE TABLE workspace_members (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')) DEFAULT 'member',
@@ -42,7 +41,7 @@ CREATE INDEX idx_workspace_members_user ON workspace_members(user_id);
 
 -- GitHub connections (OAuth tokens encrypted with AES-256-GCM)
 CREATE TABLE github_connections (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   github_user_id BIGINT NOT NULL,
@@ -58,7 +57,7 @@ CREATE INDEX idx_github_connections_workspace ON github_connections(workspace_id
 
 -- Linear connections (OAuth tokens encrypted with AES-256-GCM)
 CREATE TABLE linear_connections (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   linear_user_id TEXT NOT NULL,
@@ -75,7 +74,7 @@ CREATE INDEX idx_linear_connections_workspace ON linear_connections(workspace_id
 
 -- Repositories tracked by the workspace
 CREATE TABLE repositories (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   github_connection_id UUID NOT NULL REFERENCES github_connections(id) ON DELETE CASCADE,
   owner TEXT NOT NULL,
@@ -93,7 +92,7 @@ CREATE INDEX idx_repositories_workspace ON repositories(workspace_id);
 
 -- Scans (analysis runs)
 CREATE TABLE scans (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   repository_id UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
   initiated_by UUID NOT NULL REFERENCES users(id),
@@ -112,7 +111,7 @@ CREATE INDEX idx_scans_status ON scans(status);
 
 -- Proposals (detected issues)
 CREATE TABLE proposals (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   repository_id UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
   scan_id UUID REFERENCES scans(id) ON DELETE SET NULL,
@@ -146,7 +145,7 @@ CREATE INDEX idx_proposals_severity ON proposals(severity);
 
 -- Linear settings per workspace
 CREATE TABLE linear_settings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID UNIQUE NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   linear_connection_id UUID NOT NULL REFERENCES linear_connections(id) ON DELETE CASCADE,
   default_team_id TEXT,
