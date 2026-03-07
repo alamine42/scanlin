@@ -17,6 +17,7 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
   const [categoryFilter, setCategoryFilter] = useState<Category | 'all'>('all');
   const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('pending');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Separate pre-existing issues from new proposals
   const newProposals = proposals.filter(p => !p.isPreExisting);
@@ -52,6 +53,24 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
     total: pendingProposals.length,
   };
 
+  // Selection handlers
+  const handleSelectChange = (id: string, selected: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  // Filter selectedIds to only include pending proposals that are currently visible
+  const validSelectedIds = Array.from(selectedIds).filter(id =>
+    pendingProposals.some(p => p.id === id)
+  );
+
   return (
     <div className="space-y-6">
       {/* Filters bar */}
@@ -62,7 +81,14 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
             value={statusFilter}
             onValueChange={(value) => setStatusFilter(value as Status)}
             counts={counts}
-            leftAction={<BulkActions counts={pendingCounts} workspaceSlug={workspaceSlug} />}
+            leftAction={
+              <BulkActions
+                counts={pendingCounts}
+                workspaceSlug={workspaceSlug}
+                selectedIds={validSelectedIds}
+                onClearSelection={() => setSelectedIds(new Set())}
+              />
+            }
           />
         </div>
 
@@ -105,7 +131,13 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
               className="animate-slide-up"
               style={{ animationDelay: `${index * 50}ms` }}
             >
-              <ProposalCard proposal={proposal} workspaceSlug={workspaceSlug} />
+              <ProposalCard
+                proposal={proposal}
+                workspaceSlug={workspaceSlug}
+                selectable={proposal.status === 'pending'}
+                selected={selectedIds.has(proposal.id)}
+                onSelectChange={handleSelectChange}
+              />
             </div>
           ))}
         </div>

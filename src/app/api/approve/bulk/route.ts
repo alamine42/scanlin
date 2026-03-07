@@ -21,7 +21,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { minSeverity } = body as { minSeverity: Severity | 'all' };
+    const { minSeverity, proposalIds } = body as {
+      minSeverity?: Severity | 'all';
+      proposalIds?: string[];
+    };
 
     const supabase = await createClient();
 
@@ -51,8 +54,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get eligible proposals
-    const proposals = await getPendingProposalsBySeverity(workspaceId, minSeverity);
+    // Get eligible proposals - either by IDs or by severity
+    let proposals;
+    if (proposalIds && proposalIds.length > 0) {
+      // Fetch specific proposals by ID
+      const result = await supabase
+        .from('proposals')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'pending')
+        .in('id', proposalIds);
+
+      proposals = (result.data || []) as Awaited<ReturnType<typeof getPendingProposalsBySeverity>>;
+    } else if (minSeverity) {
+      proposals = await getPendingProposalsBySeverity(workspaceId, minSeverity);
+    } else {
+      return NextResponse.json({ error: 'Either minSeverity or proposalIds is required' }, { status: 400 });
+    }
 
     if (proposals.length === 0) {
       return NextResponse.json({

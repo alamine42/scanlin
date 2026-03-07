@@ -15,22 +15,26 @@ interface BulkActionsProps {
     total: number;
   };
   workspaceSlug?: string;
+  selectedIds?: string[];
+  onClearSelection?: () => void;
 }
 
 type ApprovalOption = {
   label: string;
-  value: Severity | 'all';
+  value: Severity | 'all' | 'selected';
   description: string;
   count: number;
 };
 
-export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
+export function BulkActions({ counts, workspaceSlug, selectedIds = [], onClearSelection }: BulkActionsProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [result, setResult] = useState<{ approved: number; failed: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+
+  const hasSelection = selectedIds.length > 0;
 
   useEffect(() => {
     if (isOpen && buttonRef.current) {
@@ -43,6 +47,12 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
   }, [isOpen]);
 
   const options: ApprovalOption[] = [
+    ...(hasSelection ? [{
+      label: 'Approve Selected',
+      value: 'selected' as const,
+      description: `Approve ${selectedIds.length} selected proposal${selectedIds.length !== 1 ? 's' : ''}`,
+      count: selectedIds.length,
+    }] : []),
     {
       label: 'Approve All',
       value: 'all',
@@ -69,7 +79,7 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
     },
   ];
 
-  const handleApprove = async (minSeverity: Severity | 'all') => {
+  const handleApprove = async (minSeverity: Severity | 'all' | 'selected') => {
     const option = options.find(o => o.value === minSeverity);
     if (!option || option.count === 0) return;
 
@@ -83,10 +93,14 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
 
     try {
       const url = workspaceSlug ? `/api/approve/bulk?workspace=${workspaceSlug}` : '/api/approve/bulk';
+      const body = minSeverity === 'selected'
+        ? { proposalIds: selectedIds }
+        : { minSeverity };
+
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ minSeverity }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
@@ -97,6 +111,7 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
 
       setResult({ approved: data.approved, failed: data.failed });
       setIsOpen(false);
+      onClearSelection?.();
       router.refresh();
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Bulk approve failed');
@@ -147,7 +162,7 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            <span>Bulk Approve</span>
+            <span>{hasSelection ? `Approve (${selectedIds.length})` : 'Bulk Approve'}</span>
             <svg className="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>

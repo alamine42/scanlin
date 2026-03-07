@@ -9,6 +9,9 @@ interface ProposalCardProps {
   proposal: ProposedIssue;
   isPreExisting?: boolean;
   workspaceSlug?: string;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectChange?: (id: string, selected: boolean) => void;
 }
 
 const severityBarColors = {
@@ -25,12 +28,18 @@ const statusIndicators = {
   snoozed: { color: 'bg-status-snoozed', label: 'Snoozed' },
 };
 
-export function ProposalCard({ proposal, isPreExisting, workspaceSlug }: ProposalCardProps) {
+export function ProposalCard({ proposal, isPreExisting, workspaceSlug, selectable, selected, onSelectChange }: ProposalCardProps) {
   const proposalUrl = workspaceSlug
     ? `/${workspaceSlug}/proposals/${proposal.id}`
     : `/proposals/${proposal.id}`;
 
   const status = statusIndicators[proposal.status];
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelectChange?.(proposal.id, !selected);
+  };
 
   return (
     <Link href={proposalUrl} className="block group">
@@ -41,7 +50,8 @@ export function ProposalCard({ proposal, isPreExisting, workspaceSlug }: Proposa
           'hover:border-border-hover hover:bg-surface-hover',
           'hover:shadow-md hover:-translate-y-0.5',
           'active:scale-[0.99] active:translate-y-0',
-          'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background'
+          'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background',
+          selected && 'border-primary bg-primary/5'
         )}
       >
         {/* Severity indicator bar */}
@@ -52,7 +62,29 @@ export function ProposalCard({ proposal, isPreExisting, workspaceSlug }: Proposa
           )}
         />
 
-        <div className="pl-4 pr-4 py-4">
+        <div className={cn('pr-4 py-4', selectable ? 'pl-12' : 'pl-4')}>
+          {/* Checkbox for selection */}
+          {selectable && (
+            <div
+              onClick={handleCheckboxClick}
+              className="absolute left-4 top-1/2 -translate-y-1/2 z-10"
+            >
+              <div
+                className={cn(
+                  'w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all',
+                  selected
+                    ? 'bg-primary border-primary'
+                    : 'border-border-hover hover:border-primary/50 bg-surface'
+                )}
+              >
+                {selected && (
+                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+            </div>
+          )}
           {/* Header row */}
           <div className="flex items-start justify-between gap-4">
             {/* Content */}
