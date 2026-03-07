@@ -61,6 +61,9 @@ export function DashboardStats({
         throw new Error(data.error || 'Scan failed');
       }
 
+      // Refresh to clear old proposals (scan API clears non-approved proposals)
+      router.refresh();
+
       const reader = response.body?.getReader();
       if (!reader) {
         throw new Error('No response body');

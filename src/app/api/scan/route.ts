@@ -108,6 +108,15 @@ export async function POST(request: Request) {
     );
   }
 
+  // Clear non-approved proposals from previous scans
+  // Keep approved proposals to identify duplicates
+  await supabase
+    .from('proposals')
+    .delete()
+    .eq('workspace_id', workspaceId)
+    .eq('repository_id', repository.id)
+    .neq('status', 'approved');
+
   // Create a TransformStream for SSE
   const encoder = new TextEncoder();
   const stream = new TransformStream();
