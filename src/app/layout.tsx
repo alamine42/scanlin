@@ -21,15 +21,25 @@ export default function RootLayout({
       appearance={{
         baseTheme: dark,
         variables: {
-          colorPrimary: '#3b82f6',
-          colorBackground: '#030712',
-          colorInputBackground: '#1f2937',
-          colorInputText: '#f9fafb',
+          colorPrimary: '#6366f1',
+          colorBackground: '#0a0a0f',
+          colorInputBackground: '#16161e',
+          colorInputText: '#e4e4e7',
+          colorText: '#e4e4e7',
+          colorTextSecondary: '#a1a1aa',
+          colorNeutral: '#e4e4e7',
+        },
+        elements: {
+          card: 'bg-[#16161e] border border-[#27272a]',
+          userButtonPopoverCard: 'bg-[#16161e] border border-[#27272a]',
+          userButtonPopoverActionButton: 'hover:bg-[#27272a]',
+          userButtonPopoverActionButtonText: 'text-[#e4e4e7]',
+          userButtonPopoverActionButtonIcon: 'text-[#a1a1aa]',
         },
       }}
     >
       <html lang="en" className="dark">
-        <body className={`${inter.className} bg-gray-950 text-gray-100 antialiased`}>
+        <body className={`${inter.className} bg-background text-foreground antialiased`}>
           {children}
         </body>
       </html>
