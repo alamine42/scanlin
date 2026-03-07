@@ -57,7 +57,7 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
       {/* Filters bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         {/* Status tabs with bulk action */}
-        <div className="flex-1 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex-1 overflow-x-auto overflow-y-visible -mx-4 px-4 sm:mx-0 sm:px-0">
           <StatusTabs
             value={statusFilter}
             onValueChange={(value) => setStatusFilter(value as Status)}

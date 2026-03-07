@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import { Severity } from '@/types/proposal';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,18 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [result, setResult] = useState<{ approved: number; failed: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left,
+      });
+    }
+  }, [isOpen]);
 
   const options: ApprovalOption[] = [
     {
@@ -97,6 +110,7 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         disabled={isApproving}
         className={cn(
@@ -141,16 +155,19 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
         )}
       </button>
 
-      {isOpen && !isApproving && (
+      {isOpen && !isApproving && typeof document !== 'undefined' && createPortal(
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 z-10"
+            className="fixed inset-0 z-40"
             onClick={() => setIsOpen(false)}
           />
 
           {/* Dropdown */}
-          <div className="absolute left-0 mt-2 w-64 bg-surface border border-border rounded-lg shadow-xl z-20 animate-fade-in">
+          <div
+            className="fixed w-64 bg-surface border border-border rounded-lg shadow-xl z-50 animate-fade-in"
+            style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
+          >
             <div className="p-1.5">
               {options.map((option) => (
                 <button
@@ -170,7 +187,8 @@ export function BulkActions({ counts, workspaceSlug }: BulkActionsProps) {
               ))}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {result && (
