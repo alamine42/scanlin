@@ -146,13 +146,18 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
       {/* Pre-Existing Issues Section */}
       {filteredPreExisting.length > 0 && (
         <section className="mt-12">
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-base font-medium text-foreground-muted">
-              Pre-Existing Issues
-            </h2>
-            <span className="text-xs text-foreground-subtle px-2 py-0.5 bg-surface rounded-full">
-              {filteredPreExisting.length} tracked
-            </span>
+          <div className="mb-4">
+            <div className="flex items-center gap-3 mb-1">
+              <h2 className="text-base font-medium text-foreground-muted">
+                Already in Linear
+              </h2>
+              <span className="text-xs text-foreground-subtle px-2 py-0.5 bg-surface rounded-full">
+                {filteredPreExisting.length} issue{filteredPreExisting.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <p className="text-xs text-foreground-subtle">
+              These issues already exist in Linear. Click to view details or create a new issue anyway.
+            </p>
           </div>
           <div className="border-t border-border pt-4">
             <div className="space-y-3">

@@ -14,8 +14,18 @@ export function ApprovalActions({ proposal, workspaceSlug }: ApprovalActionsProp
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSnoozeOptions, setShowSnoozeOptions] = useState(false);
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
+
+  const handleApproveClick = () => {
+    if (proposal.isPreExisting && proposal.existingLinearIssueUrl) {
+      setShowDuplicateWarning(true);
+    } else {
+      handleApprove();
+    }
+  };
 
   const handleApprove = async () => {
+    setShowDuplicateWarning(false);
     setIsLoading('approve');
     setError(null);
 
@@ -163,9 +173,56 @@ export function ApprovalActions({ proposal, workspaceSlug }: ApprovalActionsProp
         </div>
       )}
 
+      {/* Duplicate Warning Dialog */}
+      {showDuplicateWarning && (
+        <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-foreground">Duplicate Issue Warning</h4>
+              <p className="text-sm text-foreground-muted mt-1">
+                This issue already exists in Linear. Creating a new issue will result in a duplicate.
+              </p>
+              {proposal.existingLinearIssueUrl && (
+                <a
+                  href={proposal.existingLinearIssueUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-primary-hover hover:text-primary mt-2"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  View existing issue in Linear
+                </a>
+              )}
+              <div className="flex items-center gap-2 mt-4">
+                <button
+                  onClick={handleApprove}
+                  disabled={isLoading !== null}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-warning/20 hover:bg-warning/30 text-warning text-sm font-medium rounded-md transition-colors"
+                >
+                  Create Anyway
+                </button>
+                <button
+                  onClick={() => setShowDuplicateWarning(false)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-surface hover:bg-surface-hover text-foreground-muted text-sm font-medium rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <button
-          onClick={handleApprove}
+          onClick={handleApproveClick}
           disabled={isLoading !== null}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white text-sm font-medium rounded-lg transition-colors"
         >
