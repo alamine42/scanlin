@@ -56,20 +56,18 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
     <div className="space-y-6">
       {/* Filters bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        {/* Status tabs */}
+        {/* Status tabs with bulk action */}
         <div className="flex-1 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
           <StatusTabs
             value={statusFilter}
             onValueChange={(value) => setStatusFilter(value as Status)}
             counts={counts}
+            leftAction={<BulkActions counts={pendingCounts} workspaceSlug={workspaceSlug} />}
           />
         </div>
 
         {/* Filter dropdowns */}
         <div className="flex items-center gap-3">
-          {/* Bulk actions */}
-          <BulkActions counts={pendingCounts} workspaceSlug={workspaceSlug} />
-
           {/* Category filter */}
           <Select
             value={categoryFilter}

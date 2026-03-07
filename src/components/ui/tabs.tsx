@@ -164,6 +164,7 @@ export interface StatusTabsProps {
     snoozed: number;
   };
   className?: string;
+  leftAction?: ReactNode;
 }
 
 export function StatusTabs({
@@ -171,6 +172,7 @@ export function StatusTabs({
   onValueChange,
   counts,
   className,
+  leftAction,
 }: StatusTabsProps) {
   const tabs = [
     { value: 'pending', label: 'Pending', count: counts.pending },
@@ -182,6 +184,8 @@ export function StatusTabs({
   return (
     <Tabs defaultValue={value} value={value} onValueChange={onValueChange} className={className}>
       <TabsList>
+        {leftAction}
+        {leftAction && <div className="w-px h-5 bg-border mx-1" />}
         {tabs.map((tab) => (
           <TabsTrigger key={tab.value} value={tab.value} badge={tab.count}>
             {tab.label}
