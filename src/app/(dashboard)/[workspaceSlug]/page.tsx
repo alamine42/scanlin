@@ -2,8 +2,8 @@ import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@/lib/supabase/server';
 import { ProposalList } from '@/components/ProposalList';
-import { ScanButton } from '@/components/ScanButton';
-import { StatCard, Card } from '@/components/ui/card';
+import { DashboardStats } from '@/components/DashboardStats';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import type { ProposedIssue, Severity, Category } from '@/types/proposal';
@@ -171,18 +171,11 @@ export default async function WorkspaceDashboardPage({ params, searchParams }: P
   return (
     <div className="space-y-8">
       {/* Header section */}
-      <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-foreground">Proposed Issues</h1>
-          <p className="text-sm text-foreground-muted">
-            AI-detected security vulnerabilities and testing gaps
-          </p>
-        </div>
-        <ScanButton
-          hasProposals={clientProposals.length > 0}
-          disabled={!data.hasGitHubConnection}
-          workspaceSlug={workspaceSlug}
-        />
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold text-foreground">Proposed Issues</h1>
+        <p className="text-sm text-foreground-muted">
+          AI-detected security vulnerabilities and testing gaps
+        </p>
       </header>
 
       {/* Setup prompt if no integrations */}
@@ -219,60 +212,18 @@ export default async function WorkspaceDashboardPage({ params, searchParams }: P
         </Card>
       )}
 
-      {/* Stats */}
-      {stats.total > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-          <StatCard
-            label="Files Scanned"
-            value={data.filesScanned}
-            color="primary"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Total Issues"
-            value={stats.total}
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Security"
-            value={stats.byCategory.security}
-            color="error"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Testing"
-            value={stats.byCategory.testing}
-            color="default"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Critical"
-            value={stats.bySeverity.critical}
-            color="error"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            }
-          />
-        </div>
-      )}
+      {/* Stats and Scan Controls */}
+      <DashboardStats
+        initialFilesScanned={data.filesScanned}
+        stats={{
+          total: stats.total,
+          byCategory: stats.byCategory,
+          bySeverity: { critical: stats.bySeverity.critical },
+        }}
+        hasGitHubConnection={data.hasGitHubConnection}
+        hasProposals={clientProposals.length > 0}
+        workspaceSlug={workspaceSlug}
+      />
 
       {/* Empty state */}
       {clientProposals.length === 0 ? (
@@ -293,18 +244,11 @@ export default async function WorkspaceDashboardPage({ params, searchParams }: P
             </svg>
           </div>
           <h2 className="text-xl font-medium text-foreground mb-2">No proposed issues yet</h2>
-          <p className="text-sm text-foreground-muted max-w-md mx-auto mb-6">
+          <p className="text-sm text-foreground-muted max-w-md mx-auto">
             {data.hasGitHubConnection
-              ? 'Run a scan to analyze your repository for security vulnerabilities and testing gaps. AI will identify potential issues that need your review.'
+              ? 'Click "Scan Repository" above to analyze your codebase for security vulnerabilities and testing gaps.'
               : 'Connect your GitHub account to start scanning repositories.'}
           </p>
-          {data.hasGitHubConnection && (
-            <ScanButton
-              hasProposals={false}
-              disabled={false}
-              workspaceSlug={workspaceSlug}
-            />
-          )}
         </div>
       ) : (
         <ProposalList proposals={clientProposals} workspaceSlug={workspaceSlug} />
