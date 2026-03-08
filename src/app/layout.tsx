@@ -42,7 +42,7 @@ export default function RootLayout({
       <html lang="en" className="dark">
         <body className={`${inter.className} bg-background text-foreground antialiased`}>
           {children}
-          {process.env.NODE_ENV === 'development' && <Agentation />}
+          <Agentation />
         </body>
       </html>
     </ClerkProvider>
