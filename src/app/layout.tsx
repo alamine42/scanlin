@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { dark } from '@clerk/themes';
+import { Agentation } from 'agentation';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -41,6 +42,7 @@ export default function RootLayout({
       <html lang="en" className="dark">
         <body className={`${inter.className} bg-background text-foreground antialiased`}>
           {children}
+          {process.env.NODE_ENV === 'development' && <Agentation />}
         </body>
       </html>
     </ClerkProvider>
