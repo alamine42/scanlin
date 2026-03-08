@@ -14,6 +14,9 @@ import {
 } from './integrations/linear';
 import { buildSecurityPrompt } from './prompts/security';
 import { buildTestingPrompt } from './prompts/testing';
+import { buildTechDebtPrompt } from './prompts/tech-debt';
+import { buildPerformancePrompt } from './prompts/performance';
+import { buildDocumentationPrompt } from './prompts/documentation';
 import { createProposal, findSimilarProposal } from './services/proposals';
 import { updateScanStatus } from './services/scans';
 import { updateLastScanned } from './services/repositories';
@@ -43,6 +46,7 @@ interface AnalysisContext {
   octokit: Octokit;
   linearClient: LinearClient | null;
   linearTeamId: string | null;
+  categories: Category[];
 }
 
 async function analyzeWithAI(
@@ -101,7 +105,8 @@ export async function analyzeRepositoryStreaming(
   context: AnalysisContext,
   onEvent: EventCallback
 ): Promise<void> {
-  const { workspaceId, repositoryId, scanId, octokit, linearClient, linearTeamId } = context;
+  const { workspaceId, repositoryId, scanId, octokit, linearClient, linearTeamId, categories } = context;
+  const categorySet = new Set(categories);
   let totalProposals = 0;
   let filesScanned = 0;
 
@@ -148,110 +153,137 @@ export async function analyzeRepositoryStreaming(
     filesScanned = sourceContents.length;
 
     // Phase 2: Analyze files
-    const totalAnalyses = sourceContents.length * 2;
+    // Only count selected categories
+    const totalAnalyses = sourceContents.length * categorySet.size;
     let completed = 0;
+
+    // Helper function to process analysis results
+    async function processResults(
+      results: AIAnalysisResult[],
+      category: Category
+    ) {
+      for (const result of results) {
+        const existing = await findSimilarProposal(workspaceId, repositoryId, result.filePath, result.title);
+        if (existing) continue;
+
+        let existingLinearIssue = null;
+        if (linearClient && linearTeamId) {
+          existingLinearIssue = await findExistingIssue(
+            linearClient,
+            linearTeamId,
+            result.title,
+            result.filePath
+          );
+        }
+
+        const proposal = await createProposal(workspaceId, repositoryId, scanId, {
+          ...result,
+          category,
+          isPreExisting: !!existingLinearIssue,
+          existingLinearIssueId: existingLinearIssue?.id,
+          existingLinearIssueUrl: existingLinearIssue?.url,
+        });
+
+        if (proposal) {
+          totalProposals++;
+          onEvent({ type: 'proposal', proposal });
+        }
+      }
+    }
 
     for (const file of sourceContents) {
       // Security analysis
-      onEvent({
-        type: 'progress',
-        phase: 'analyzing',
-        current: completed,
-        total: totalAnalyses,
-        currentFile: file.path,
-      });
-
-      const securityPrompt = buildSecurityPrompt(file.path, file.content);
-      const securityResults = await analyzeWithAI(securityPrompt, 'security');
-
-      for (const result of securityResults) {
-        // Check for existing proposal in database
-        const existing = await findSimilarProposal(workspaceId, repositoryId, result.filePath, result.title);
-        if (existing) continue;
-
-        // Check if this issue already exists in Linear
-        let existingLinearIssue = null;
-        if (linearClient && linearTeamId) {
-          existingLinearIssue = await findExistingIssue(
-            linearClient,
-            linearTeamId,
-            result.title,
-            result.filePath
-          );
-        }
-
-        const proposal = await createProposal(workspaceId, repositoryId, scanId, {
-          ...result,
-          category: 'security',
-          isPreExisting: !!existingLinearIssue,
-          existingLinearIssueId: existingLinearIssue?.id,
-          existingLinearIssueUrl: existingLinearIssue?.url,
+      if (categorySet.has('security')) {
+        onEvent({
+          type: 'progress',
+          phase: 'analyzing',
+          current: completed,
+          total: totalAnalyses,
+          currentFile: file.path,
         });
 
-        if (proposal) {
-          totalProposals++;
-          onEvent({ type: 'proposal', proposal });
-        }
+        const securityPrompt = buildSecurityPrompt(file.path, file.content);
+        const securityResults = await analyzeWithAI(securityPrompt, 'security');
+        await processResults(securityResults, 'security');
+        completed++;
       }
-
-      completed++;
 
       // Testing analysis
-      onEvent({
-        type: 'progress',
-        phase: 'analyzing',
-        current: completed,
-        total: totalAnalyses,
-        currentFile: file.path,
-      });
-
-      const testFileItem = findTestFileForSource(
-        file.path,
-        testFiles as FileTreeItem[]
-      );
-      const testFile = testFileItem
-        ? testContents.find(t => t.path === testFileItem.path)
-        : undefined;
-
-      const testingPrompt = buildTestingPrompt(
-        file.path,
-        file.content,
-        testFile?.path,
-        testFile?.content
-      );
-      const testingResults = await analyzeWithAI(testingPrompt, 'testing');
-
-      for (const result of testingResults) {
-        // Check for existing proposal in database
-        const existing = await findSimilarProposal(workspaceId, repositoryId, result.filePath, result.title);
-        if (existing) continue;
-
-        // Check if this issue already exists in Linear
-        let existingLinearIssue = null;
-        if (linearClient && linearTeamId) {
-          existingLinearIssue = await findExistingIssue(
-            linearClient,
-            linearTeamId,
-            result.title,
-            result.filePath
-          );
-        }
-
-        const proposal = await createProposal(workspaceId, repositoryId, scanId, {
-          ...result,
-          category: 'testing',
-          isPreExisting: !!existingLinearIssue,
-          existingLinearIssueId: existingLinearIssue?.id,
-          existingLinearIssueUrl: existingLinearIssue?.url,
+      if (categorySet.has('testing')) {
+        onEvent({
+          type: 'progress',
+          phase: 'analyzing',
+          current: completed,
+          total: totalAnalyses,
+          currentFile: file.path,
         });
 
-        if (proposal) {
-          totalProposals++;
-          onEvent({ type: 'proposal', proposal });
-        }
+        const testFileItem = findTestFileForSource(
+          file.path,
+          testFiles as FileTreeItem[]
+        );
+        const testFile = testFileItem
+          ? testContents.find(t => t.path === testFileItem.path)
+          : undefined;
+
+        const testingPrompt = buildTestingPrompt(
+          file.path,
+          file.content,
+          testFile?.path,
+          testFile?.content
+        );
+        const testingResults = await analyzeWithAI(testingPrompt, 'testing');
+        await processResults(testingResults, 'testing');
+        completed++;
       }
 
-      completed++;
+      // Tech Debt analysis
+      if (categorySet.has('tech_debt')) {
+        onEvent({
+          type: 'progress',
+          phase: 'analyzing',
+          current: completed,
+          total: totalAnalyses,
+          currentFile: file.path,
+        });
+
+        const techDebtPrompt = buildTechDebtPrompt(file.path, file.content);
+        const techDebtResults = await analyzeWithAI(techDebtPrompt, 'tech_debt');
+        await processResults(techDebtResults, 'tech_debt');
+        completed++;
+      }
+
+      // Performance analysis
+      if (categorySet.has('performance')) {
+        onEvent({
+          type: 'progress',
+          phase: 'analyzing',
+          current: completed,
+          total: totalAnalyses,
+          currentFile: file.path,
+        });
+
+        const performancePrompt = buildPerformancePrompt(file.path, file.content);
+        const performanceResults = await analyzeWithAI(performancePrompt, 'performance');
+        await processResults(performanceResults, 'performance');
+        completed++;
+      }
+
+      // Documentation analysis
+      if (categorySet.has('documentation')) {
+        onEvent({
+          type: 'progress',
+          phase: 'analyzing',
+          current: completed,
+          total: totalAnalyses,
+          currentFile: file.path,
+        });
+
+        const documentationPrompt = buildDocumentationPrompt(file.path, file.content);
+        const documentationResults = await analyzeWithAI(documentationPrompt, 'documentation');
+        await processResults(documentationResults, 'documentation');
+        completed++;
+      }
 
       // Small delay between files to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 100));

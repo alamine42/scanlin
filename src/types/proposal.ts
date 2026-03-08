@@ -1,4 +1,4 @@
-export type Category = 'security' | 'testing';
+export type Category = 'security' | 'testing' | 'tech_debt' | 'performance' | 'documentation';
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 export type Status = 'pending' | 'approved' | 'rejected' | 'snoozed';
 

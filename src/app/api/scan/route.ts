@@ -6,6 +6,7 @@ import { getLinearClient, getDefaultTeamId } from '@/lib/integrations/linear';
 import { analyzeRepositoryStreaming } from '@/lib/analyzer-multi-tenant';
 import { createScan } from '@/lib/services/scans';
 import type { Repository } from '@/types/database';
+import type { Category } from '@/types/proposal';
 
 export const maxDuration = 300; // 5 minutes for Vercel
 
@@ -28,9 +29,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // Get repository from request body
+  // Get repository and categories from request body
   const body = await request.json().catch(() => ({}));
   const repositoryId = body.repositoryId;
+  const categories: Category[] = body.categories || ['security', 'testing', 'tech_debt', 'performance', 'documentation'];
 
   const supabase = await createClient();
 
@@ -134,6 +136,7 @@ export async function POST(request: Request) {
           octokit,
           linearClient,
           linearTeamId,
+          categories,
         },
         async (event) => {
           const data = `data: ${JSON.stringify(event)}\n\n`;

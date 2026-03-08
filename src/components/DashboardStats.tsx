@@ -4,6 +4,7 @@ import { useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { StatCard } from './ui/card';
 import { cn } from '@/lib/utils';
+import type { Category } from '@/types/proposal';
 
 interface ScanProgress {
   phase: 'fetching' | 'analyzing' | 'complete';
@@ -13,11 +14,25 @@ interface ScanProgress {
   foundCount: number;
 }
 
+const ALL_CATEGORIES: { id: Category; label: string; icon: string; color: string }[] = [
+  { id: 'security', label: 'Security', icon: '🔒', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  { id: 'testing', label: 'Testing', icon: '🧪', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
+  { id: 'tech_debt', label: 'Tech Debt', icon: '🔧', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+  { id: 'performance', label: 'Performance', icon: '⚡', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
+  { id: 'documentation', label: 'Docs', icon: '📝', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+];
+
 interface DashboardStatsProps {
   initialFilesScanned: number;
   stats: {
     total: number;
-    byCategory: { security: number; testing: number };
+    byCategory: {
+      security: number;
+      testing: number;
+      tech_debt: number;
+      performance: number;
+      documentation: number;
+    };
     bySeverity: { critical: number };
   };
   hasGitHubConnection: boolean;
@@ -39,9 +54,31 @@ export function DashboardStats({
   const [isClearing, setIsClearing] = useState(false);
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<Set<Category>>(
+    new Set(['security', 'testing', 'tech_debt', 'performance', 'documentation'])
+  );
 
   // Use progress.current during scan, otherwise use initial value
   const filesScanned = progress?.phase === 'analyzing' ? progress.current : initialFilesScanned;
+
+  const toggleCategory = (category: Category) => {
+    setSelectedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        // Don't allow deselecting all categories
+        if (next.size > 1) {
+          next.delete(category);
+        }
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
+
+  const selectAllCategories = () => {
+    setSelectedCategories(new Set(ALL_CATEGORIES.map(c => c.id)));
+  };
 
   const handleScan = async () => {
     setIsScanning(true);
@@ -53,7 +90,10 @@ export function DashboardStats({
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repositoryId }),
+        body: JSON.stringify({
+          repositoryId,
+          categories: Array.from(selectedCategories),
+        }),
       });
 
       if (!response.ok) {
@@ -154,11 +194,54 @@ export function DashboardStats({
 
   return (
     <div className="space-y-6">
+      {/* Category Selection */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-foreground-muted">
+            Scan Categories
+          </label>
+          <button
+            onClick={selectAllCategories}
+            disabled={isScanning || selectedCategories.size === ALL_CATEGORIES.length}
+            className="text-xs text-primary-hover hover:text-primary disabled:text-foreground-subtle disabled:cursor-not-allowed transition-colors"
+          >
+            Select All
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {ALL_CATEGORIES.map((category) => {
+            const isSelected = selectedCategories.has(category.id);
+            return (
+              <button
+                key={category.id}
+                onClick={() => toggleCategory(category.id)}
+                disabled={isScanning}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
+                  isSelected
+                    ? category.color
+                    : 'bg-surface border-border text-foreground-subtle hover:border-border-hover',
+                  isScanning && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                <span>{category.icon}</span>
+                <span>{category.label}</span>
+                {isSelected && (
+                  <svg className="w-3.5 h-3.5 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Scan Controls */}
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={handleScan}
-          disabled={isScanning || isClearing || !hasGitHubConnection}
+          disabled={isScanning || isClearing || !hasGitHubConnection || selectedCategories.size === 0}
           className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover disabled:bg-primary/50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
         >
           {isScanning ? (
@@ -234,7 +317,7 @@ export function DashboardStats({
 
       {/* Stats Grid */}
       {(stats.total > 0 || isScanning) && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 md:gap-4">
           <StatCard
             label="Files Scanned"
             value={filesScanned}
@@ -272,6 +355,37 @@ export function DashboardStats({
             icon={
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+              </svg>
+            }
+          />
+          <StatCard
+            label="Tech Debt"
+            value={stats.byCategory.tech_debt}
+            color="warning"
+            icon={
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            }
+          />
+          <StatCard
+            label="Performance"
+            value={stats.byCategory.performance}
+            color="primary"
+            icon={
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            }
+          />
+          <StatCard
+            label="Docs"
+            value={stats.byCategory.documentation}
+            color="success"
+            icon={
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             }
           />

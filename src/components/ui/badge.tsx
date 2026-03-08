@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 export interface BadgeProps {
   children: ReactNode;
-  variant?: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'security' | 'testing';
+  variant?: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'security' | 'testing' | 'tech_debt' | 'performance' | 'documentation';
   size?: 'sm' | 'md';
   icon?: ReactNode;
   className?: string;
@@ -19,6 +19,9 @@ const variantStyles = {
   error: 'bg-error-muted text-error border border-error/20',
   security: 'bg-category-security-bg text-category-security border border-category-security/20',
   testing: 'bg-category-testing-bg text-category-testing border border-category-testing/20',
+  tech_debt: 'bg-category-tech-debt-bg text-category-tech-debt border border-category-tech-debt/20',
+  performance: 'bg-category-performance-bg text-category-performance border border-category-performance/20',
+  documentation: 'bg-category-documentation-bg text-category-documentation border border-category-documentation/20',
 };
 
 const sizeStyles = {
@@ -107,7 +110,7 @@ export function SeverityBadge({
 
 // Category badges with icons
 export interface CategoryBadgeProps {
-  category: 'security' | 'testing';
+  category: 'security' | 'testing' | 'tech_debt' | 'performance' | 'documentation';
   size?: 'sm' | 'md';
   className?: string;
 }
@@ -122,6 +125,21 @@ const categoryConfig = {
     label: 'Testing',
     icon: '🧪',
     badgeClass: 'bg-category-testing-bg text-category-testing border border-category-testing/20',
+  },
+  tech_debt: {
+    label: 'Tech Debt',
+    icon: '🔧',
+    badgeClass: 'bg-category-tech-debt-bg text-category-tech-debt border border-category-tech-debt/20',
+  },
+  performance: {
+    label: 'Performance',
+    icon: '⚡',
+    badgeClass: 'bg-category-performance-bg text-category-performance border border-category-performance/20',
+  },
+  documentation: {
+    label: 'Docs',
+    icon: '📝',
+    badgeClass: 'bg-category-documentation-bg text-category-documentation border border-category-documentation/20',
   },
 };
 

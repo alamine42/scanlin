@@ -165,6 +165,9 @@ export default async function WorkspaceDashboardPage({ params, searchParams }: P
     byCategory: {
       security: clientProposals.filter(p => p.category === 'security').length,
       testing: clientProposals.filter(p => p.category === 'testing').length,
+      tech_debt: clientProposals.filter(p => p.category === 'tech_debt').length,
+      performance: clientProposals.filter(p => p.category === 'performance').length,
+      documentation: clientProposals.filter(p => p.category === 'documentation').length,
     },
   };
 

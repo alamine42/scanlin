@@ -73,6 +73,12 @@ const config: Config = {
           'security-bg': 'var(--security-bg)',
           testing: 'var(--testing)',
           'testing-bg': 'var(--testing-bg)',
+          'tech-debt': 'var(--tech-debt)',
+          'tech-debt-bg': 'var(--tech-debt-bg)',
+          performance: 'var(--performance)',
+          'performance-bg': 'var(--performance-bg)',
+          documentation: 'var(--documentation)',
+          'documentation-bg': 'var(--documentation-bg)',
         },
         // Status
         status: {

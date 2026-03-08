@@ -98,11 +98,14 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
           <Select
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value as Category | 'all')}
-            className="w-[140px]"
+            className="w-[160px]"
           >
             <option value="all">All Categories</option>
             <option value="security">Security</option>
             <option value="testing">Testing</option>
+            <option value="tech_debt">Tech Debt</option>
+            <option value="performance">Performance</option>
+            <option value="documentation">Documentation</option>
           </Select>
 
           {/* Severity filter */}
