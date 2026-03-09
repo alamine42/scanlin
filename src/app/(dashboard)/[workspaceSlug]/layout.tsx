@@ -160,7 +160,7 @@ export default async function DashboardLayout({ children, params }: DashboardLay
                     </div>
                   </div>
                   <span className="hidden md:block font-semibold text-foreground">
-                    Proposed Issues
+                    ScanLin
                   </span>
                 </Link>
 

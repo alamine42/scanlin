@@ -173,14 +173,6 @@ export default async function WorkspaceDashboardPage({ params, searchParams }: P
 
   return (
     <div className="space-y-8">
-      {/* Header section */}
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-foreground">Proposed Issues</h1>
-        <p className="text-sm text-foreground-muted">
-          AI-detected security vulnerabilities and testing gaps
-        </p>
-      </header>
-
       {/* Setup prompt if no integrations */}
       {!data.hasGitHubConnection && (
         <Card className="border-primary/20 bg-primary-muted/30">

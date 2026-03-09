@@ -8,7 +8,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Proposed Issues | Linear',
+  title: 'ScanLin',
   description: 'AI-powered code analysis with human approval before creating Linear issues',
 };
 

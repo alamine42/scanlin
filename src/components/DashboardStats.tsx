@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, ReactNode } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { StatCard } from './ui/card';
 import { cn } from '@/lib/utils';
 import type { Category } from '@/types/proposal';
 
@@ -54,6 +53,7 @@ export function DashboardStats({
   const [isClearing, setIsClearing] = useState(false);
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<Category>>(
     new Set(['security', 'testing', 'tech_debt', 'performance', 'documentation'])
   );
@@ -80,7 +80,8 @@ export function DashboardStats({
     setSelectedCategories(new Set(ALL_CATEGORIES.map(c => c.id)));
   };
 
-  const handleScan = async () => {
+  const handleStartScan = async () => {
+    setShowModal(false);
     setIsScanning(true);
     setError(null);
     setProgress({ phase: 'fetching', current: 0, total: 0, foundCount: 0 });
@@ -192,56 +193,25 @@ export function DashboardStats({
     }
   };
 
+  // Close modal on escape key
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape' && showModal) {
+      setShowModal(false);
+    }
+  }, [showModal]);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
   return (
     <div className="space-y-6">
-      {/* Category Selection */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-foreground-muted">
-            Scan Categories
-          </label>
-          <button
-            onClick={selectAllCategories}
-            disabled={isScanning || selectedCategories.size === ALL_CATEGORIES.length}
-            className="text-xs text-primary-hover hover:text-primary disabled:text-foreground-subtle disabled:cursor-not-allowed transition-colors"
-          >
-            Select All
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {ALL_CATEGORIES.map((category) => {
-            const isSelected = selectedCategories.has(category.id);
-            return (
-              <button
-                key={category.id}
-                onClick={() => toggleCategory(category.id)}
-                disabled={isScanning}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
-                  isSelected
-                    ? category.color
-                    : 'bg-surface border-border text-foreground-subtle hover:border-border-hover',
-                  isScanning && 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                <span>{category.icon}</span>
-                <span>{category.label}</span>
-                {isSelected && (
-                  <svg className="w-3.5 h-3.5 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Scan Controls */}
       <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={handleScan}
-          disabled={isScanning || isClearing || !hasGitHubConnection || selectedCategories.size === 0}
+          onClick={() => setShowModal(true)}
+          disabled={isScanning || isClearing || !hasGitHubConnection}
           className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover disabled:bg-primary/50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
         >
           {isScanning ? (
@@ -315,90 +285,138 @@ export function DashboardStats({
         {error && <div className="text-sm text-error">{error}</div>}
       </div>
 
-      {/* Stats Grid */}
+      {/* Compact Stats Row */}
       {(stats.total > 0 || isScanning) && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 md:gap-4">
-          <StatCard
-            label="Files Scanned"
-            value={filesScanned}
-            color="primary"
-            className={cn(isScanning && progress?.phase === 'analyzing' && 'ring-2 ring-primary/50')}
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            }
+        <div className={cn(
+          "flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 rounded-lg bg-surface border border-border",
+          isScanning && progress?.phase === 'analyzing' && 'ring-2 ring-primary/50'
+        )}>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-foreground-muted">Files:</span>
+            <span className="text-sm font-medium text-foreground">{filesScanned}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-foreground-muted">Issues:</span>
+            <span className="text-sm font-medium text-foreground">{stats.total + (progress?.foundCount || 0)}</span>
+          </div>
+          <div className="h-4 w-px bg-border hidden sm:block" />
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-red-400">🔒</span>
+            <span className="text-sm text-foreground">{stats.byCategory.security}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-purple-400">🧪</span>
+            <span className="text-sm text-foreground">{stats.byCategory.testing}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-amber-400">🔧</span>
+            <span className="text-sm text-foreground">{stats.byCategory.tech_debt}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-cyan-400">⚡</span>
+            <span className="text-sm text-foreground">{stats.byCategory.performance}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-emerald-400">📝</span>
+            <span className="text-sm text-foreground">{stats.byCategory.documentation}</span>
+          </div>
+          {stats.bySeverity.critical > 0 && (
+            <>
+              <div className="h-4 w-px bg-border hidden sm:block" />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-error">Critical:</span>
+                <span className="text-sm font-medium text-error">{stats.bySeverity.critical}</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Scan Configuration Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowModal(false)}
           />
-          <StatCard
-            label="Total Issues"
-            value={stats.total + (progress?.foundCount || 0)}
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Security"
-            value={stats.byCategory.security}
-            color="error"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Testing"
-            value={stats.byCategory.testing}
-            color="default"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Tech Debt"
-            value={stats.byCategory.tech_debt}
-            color="warning"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Performance"
-            value={stats.byCategory.performance}
-            color="primary"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Docs"
-            value={stats.byCategory.documentation}
-            color="success"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Critical"
-            value={stats.bySeverity.critical}
-            color="error"
-            icon={
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            }
-          />
+
+          {/* Modal */}
+          <div className="relative bg-surface border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-foreground">Scan Repository</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="p-1 rounded-lg hover:bg-surface-hover text-foreground-muted hover:text-foreground transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Category Selection */}
+            <div className="space-y-3 mb-6">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-foreground-muted">
+                  Select Categories
+                </label>
+                <button
+                  onClick={selectAllCategories}
+                  disabled={selectedCategories.size === ALL_CATEGORIES.length}
+                  className="text-xs text-primary-hover hover:text-primary disabled:text-foreground-subtle disabled:cursor-not-allowed transition-colors"
+                >
+                  Select All
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {ALL_CATEGORIES.map((category) => {
+                  const isSelected = selectedCategories.has(category.id);
+                  return (
+                    <button
+                      key={category.id}
+                      onClick={() => toggleCategory(category.id)}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
+                        isSelected
+                          ? category.color
+                          : 'bg-background border-border text-foreground-subtle hover:border-border-hover'
+                      )}
+                    >
+                      <span>{category.icon}</span>
+                      <span>{category.label}</span>
+                      {isSelected && (
+                        <svg className="w-3.5 h-3.5 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowModal(false)}
+                className="flex-1 px-4 py-2 bg-surface-hover hover:bg-border/50 border border-border text-foreground-muted text-sm font-medium rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleStartScan}
+                disabled={selectedCategories.size === 0}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover disabled:bg-primary/50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Start Scan
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

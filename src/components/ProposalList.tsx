@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { ProposedIssue, Category, Severity, Status } from '@/types/proposal';
+import { useState, useRef, useEffect } from 'react';
+import { ProposedIssue, Category, Severity } from '@/types/proposal';
 import { ProposalCard } from './ProposalCard';
 import { BulkActions } from './BulkActions';
-import { StatusTabs } from './ui/tabs';
 import { Select } from './ui/select';
 import { cn } from '@/lib/utils';
 
@@ -16,17 +15,18 @@ interface ProposalListProps {
 export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
   const [categoryFilter, setCategoryFilter] = useState<Category | 'all'>('all');
   const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<Status | 'all'>('pending');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Separate pre-existing issues from new proposals
   const newProposals = proposals.filter(p => !p.isPreExisting);
   const preExistingIssues = proposals.filter(p => p.isPreExisting);
 
-  const filteredProposals = newProposals.filter(proposal => {
+  // Only show pending proposals (other statuses are accessed via other views)
+  const pendingNewProposals = newProposals.filter(p => p.status === 'pending');
+
+  const filteredProposals = pendingNewProposals.filter(proposal => {
     if (categoryFilter !== 'all' && proposal.category !== categoryFilter) return false;
     if (severityFilter !== 'all' && proposal.severity !== severityFilter) return false;
-    if (statusFilter !== 'all' && proposal.status !== statusFilter) return false;
     return true;
   });
 
@@ -36,14 +36,7 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
     return true;
   });
 
-  const counts = {
-    pending: newProposals.filter(p => p.status === 'pending').length,
-    approved: newProposals.filter(p => p.status === 'approved').length,
-    rejected: newProposals.filter(p => p.status === 'rejected').length,
-    snoozed: newProposals.filter(p => p.status === 'snoozed').length,
-  };
-
-  // Calculate pending counts by severity for bulk actions (only new proposals)
+  // Calculate pending counts by severity for bulk actions
   const pendingProposals = newProposals.filter(p => p.status === 'pending');
   const pendingCounts = {
     critical: pendingProposals.filter(p => p.severity === 'critical').length,
@@ -71,24 +64,48 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
     pendingProposals.some(p => p.id === id)
   );
 
+  // Select All logic
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const filteredIds = filteredProposals.map(p => p.id);
+  const selectedInFiltered = filteredIds.filter(id => selectedIds.has(id));
+  const allSelected = filteredIds.length > 0 && selectedInFiltered.length === filteredIds.length;
+  const someSelected = selectedInFiltered.length > 0 && selectedInFiltered.length < filteredIds.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
+  const handleSelectAll = () => {
+    if (allSelected) {
+      // Deselect all filtered
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      // Select all filtered
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Filters bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        {/* Status tabs with bulk action */}
-        <div className="flex-1 overflow-x-auto overflow-y-visible -mx-4 px-4 sm:mx-0 sm:px-0">
-          <StatusTabs
-            value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value as Status)}
-            counts={counts}
-            leftAction={
-              <BulkActions
-                counts={pendingCounts}
-                workspaceSlug={workspaceSlug}
-                selectedIds={validSelectedIds}
-                onClearSelection={() => setSelectedIds(new Set())}
-              />
-            }
+        {/* Bulk actions */}
+        <div className="flex-1">
+          <BulkActions
+            counts={pendingCounts}
+            workspaceSlug={workspaceSlug}
+            selectedIds={validSelectedIds}
+            onClearSelection={() => setSelectedIds(new Set())}
           />
         </div>
 
@@ -125,9 +142,27 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
 
       {/* New Proposals */}
       {filteredProposals.length === 0 ? (
-        <EmptyState statusFilter={statusFilter} />
+        <EmptyState />
       ) : (
         <div className="space-y-3">
+          {/* Select All */}
+          <div className="flex items-center gap-3 px-4 py-2 bg-surface/50 rounded-lg border border-border/50">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              onChange={handleSelectAll}
+              className="w-4 h-4 rounded border-border bg-surface text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
+            />
+            <span className="text-sm text-foreground-muted">
+              {allSelected
+                ? `All ${filteredIds.length} selected`
+                : someSelected
+                ? `${selectedInFiltered.length} of ${filteredIds.length} selected`
+                : `Select all ${filteredIds.length} issues`}
+            </span>
+          </div>
+
           {filteredProposals.map((proposal, index) => (
             <div
               key={proposal.id}
@@ -186,12 +221,10 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
 }
 
 // Empty state component
-function EmptyState({ statusFilter }: { statusFilter: string }) {
-  const messages = {
-    pending: {
-      title: 'No pending proposals',
-      description: 'Run a scan to find issues in your codebase',
-      icon: (
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-surface flex items-center justify-center mb-4">
         <svg
           className="w-8 h-8 text-foreground-subtle"
           fill="none"
@@ -205,95 +238,9 @@ function EmptyState({ statusFilter }: { statusFilter: string }) {
             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
           />
         </svg>
-      ),
-    },
-    approved: {
-      title: 'No approved proposals',
-      description: 'Approved issues will appear here once you review them',
-      icon: (
-        <svg
-          className="w-8 h-8 text-foreground-subtle"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
-    },
-    rejected: {
-      title: 'No rejected proposals',
-      description: 'Rejected proposals will be shown here',
-      icon: (
-        <svg
-          className="w-8 h-8 text-foreground-subtle"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
-    },
-    snoozed: {
-      title: 'No snoozed proposals',
-      description: 'Snoozed issues will reappear when their timer expires',
-      icon: (
-        <svg
-          className="w-8 h-8 text-foreground-subtle"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
-    },
-    all: {
-      title: 'No proposals found',
-      description: 'Try adjusting your filters',
-      icon: (
-        <svg
-          className="w-8 h-8 text-foreground-subtle"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
-      ),
-    },
-  };
-
-  const content = messages[statusFilter as keyof typeof messages] || messages.all;
-
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-surface flex items-center justify-center mb-4">
-        {content.icon}
       </div>
-      <h3 className="text-sm font-medium text-foreground mb-1">{content.title}</h3>
-      <p className="text-xs text-foreground-subtle max-w-xs">{content.description}</p>
+      <h3 className="text-sm font-medium text-foreground mb-1">No pending proposals</h3>
+      <p className="text-xs text-foreground-subtle max-w-xs">Run a scan to find issues in your codebase</p>
     </div>
   );
 }
