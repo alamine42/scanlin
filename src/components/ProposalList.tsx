@@ -115,7 +115,7 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
           <Select
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value as Category | 'all')}
-            className="w-[160px]"
+            className="w-[180px]"
           >
             <option value="all">All Categories</option>
             <option value="security">Security</option>
@@ -129,7 +129,7 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
           <Select
             value={severityFilter}
             onChange={e => setSeverityFilter(e.target.value as Severity | 'all')}
-            className="w-[130px]"
+            className="w-[160px]"
           >
             <option value="all">All Severities</option>
             <option value="critical">Critical</option>
@@ -146,22 +146,30 @@ export function ProposalList({ proposals, workspaceSlug }: ProposalListProps) {
       ) : (
         <div className="space-y-3">
           {/* Select All */}
-          <div className="flex items-center gap-3 px-4 py-2 bg-surface/50 rounded-lg border border-border/50">
-            <input
-              ref={selectAllRef}
-              type="checkbox"
-              checked={allSelected}
-              onChange={handleSelectAll}
-              className="w-4 h-4 rounded border-border bg-surface text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
-            />
-            <span className="text-sm text-foreground-muted">
-              {allSelected
-                ? `All ${filteredIds.length} selected`
-                : someSelected
-                ? `${selectedInFiltered.length} of ${filteredIds.length} selected`
-                : `Select all ${filteredIds.length} issues`}
-            </span>
-          </div>
+          {(() => {
+            const hasActiveFilters = categoryFilter !== 'all' || severityFilter !== 'all';
+            const selectLabel = hasActiveFilters
+              ? `Select ${filteredIds.length} issue${filteredIds.length !== 1 ? 's' : ''}`
+              : `Select all ${filteredIds.length} issue${filteredIds.length !== 1 ? 's' : ''}`;
+            return (
+              <div className="flex items-center gap-3 px-4 py-2 bg-surface/50 rounded-lg border border-border/50">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 rounded border-border bg-surface text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
+                />
+                <span className="text-sm text-foreground-muted">
+                  {allSelected
+                    ? `All ${filteredIds.length} selected`
+                    : someSelected
+                    ? `${selectedInFiltered.length} of ${filteredIds.length} selected`
+                    : selectLabel}
+                </span>
+              </div>
+            );
+          })()}
 
           {filteredProposals.map((proposal, index) => (
             <div
